@@ -39,6 +39,12 @@ class Reply(Enum):
     REJECT = auto()
 
 
+@dataclass(frozen=True)
+class TradeRecord:
+    turn: int
+    offer: Offer
+
+
 class Bot(Protocol):
     def buy(self, view: GameView, player: int, square: int) -> bool: ...
 
