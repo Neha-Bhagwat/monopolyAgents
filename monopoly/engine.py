@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from random import Random
 
 from .board import BOARD, CHANCE, CHEST, GROUPS, JAIL, CardMove, Kind
-from .models import Bot, GameResult, GameView, Offer, PlayerView, Reply, TradeRecord
+from .models import Bot, GameResult, GameView, Offer, PlayerView, Reply, TradeRecord, legal_offer
 
 
 @dataclass
@@ -241,32 +241,7 @@ class Game:
         )
 
     def legal_offer(self, offer: Offer) -> bool:
-        if offer.proposer == offer.recipient:
-            return False
-        if not any((offer.give_properties, offer.ask_properties, offer.give_cash, offer.ask_cash)):
-            return False
-        return (
-            self._can_offer(offer.proposer, offer.give_properties, offer.give_cash)
-            and self._can_offer(offer.recipient, offer.ask_properties, offer.ask_cash)
-        )
-
-    def _can_offer(self, player: int, properties: tuple[int, ...], cash: int) -> bool:
-        if type(player) is not int or not 0 <= player < len(self.players):
-            return False
-        state = self.players[player]
-        if state.bankrupt or type(cash) is not int or not 0 <= cash <= state.cash:
-            return False
-        if len(set(properties)) != len(properties):
-            return False
-        for square in properties:
-            if type(square) is not int or not 0 <= square < len(BOARD):
-                return False
-            prop = BOARD[square].property
-            if prop is None or self.owners[square] != player:
-                return False
-            if any(self.buildings[i] for i in GROUPS[prop.group]):
-                return False
-        return True
+        return legal_offer(self.view(), offer)
 
     def _apply_trade(self, offer: Offer) -> None:
         self.players[offer.proposer].cash += offer.ask_cash - offer.give_cash
