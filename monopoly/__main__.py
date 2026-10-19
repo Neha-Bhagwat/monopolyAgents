@@ -1,14 +1,15 @@
 import argparse
 
 from .board import BOARD
-from .bots import AcceptingBot, SimpleBot
+from .bots import AcceptingBot, SimpleBot, baseline_bot
 from .engine import Game
 from .models import GameView, Offer
 from .valuation import landing_probabilities, score_trade
 
 
-def print_game(seed: int) -> None:
-    game = Game([SimpleBot() for _ in range(4)], seed=seed)
+def print_game(seed: int, baseline: bool = False) -> None:
+    bots = [baseline_bot() if baseline else SimpleBot() for _ in range(4)]
+    game = Game(bots, seed=seed)
     result = game.play()
     reasons = {"last_player": "last player standing", "turn_limit": "turn limit"}
     print(f"Seed {seed}: Player {result.winner + 1} won after {result.turns} turns.")
@@ -16,6 +17,25 @@ def print_game(seed: int) -> None:
     for i, worth in enumerate(result.net_worth):
         status = " (bankrupt)" if result.bankrupt[i] else ""
         print(f"Player {i + 1}: ${worth:,}{status}")
+    if baseline:
+        print(f"Trades proposed: {result.trades_proposed}. Trades accepted: {result.trades_accepted}.")
+        for record in game.trade_history:
+            print(f"Turn {record.turn} accepted trade:")
+            print_offer(record.offer)
+
+
+def print_offer(offer: Offer) -> None:
+    def describe(properties: tuple[int, ...], cash: int) -> str:
+        items = [BOARD[square].name for square in properties]
+        if cash:
+            items.append(f"${cash:,}")
+        return " and ".join(items) or "nothing"
+
+    for player, properties, cash in (
+        (offer.proposer, offer.give_properties, offer.give_cash),
+        (offer.recipient, offer.ask_properties, offer.ask_cash),
+    ):
+        print(f"  Player {player + 1} gives {describe(properties, cash)}.")
 
 
 DEMO_OFFER = Offer(0, 1, give_properties=(5,), ask_properties=(3,), give_cash=25)
@@ -81,13 +101,14 @@ def main() -> None:
     demos = parser.add_mutually_exclusive_group()
     demos.add_argument("--trade-demo", action="store_true", help="Watch a scripted trade during play.")
     demos.add_argument("--valuation-demo", action="store_true", help="Score the scripted trade.")
+    demos.add_argument("--baseline-game", action="store_true", help="Play four Baselines from Go.")
     args = parser.parse_args()
     if args.trade_demo:
         print_trade()
     elif args.valuation_demo:
         print_valuation()
     else:
-        print_game(args.seed)
+        print_game(args.seed, baseline=args.baseline_game)
 
 
 if __name__ == "__main__":

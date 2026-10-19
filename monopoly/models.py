@@ -34,6 +34,23 @@ class Offer:
     ask_cash: int = 0
 
 
+def ownership_after_trade(view: GameView, offer: Offer) -> tuple[int | None, ...]:
+    """Preview a legal offer using a copy of deed ownership."""
+    owners = list(view.owners)
+    for square in offer.give_properties:
+        owners[square] = offer.recipient
+    for square in offer.ask_properties:
+        owners[square] = offer.proposer
+    return tuple(owners)
+
+
+def completed_sets(owners: tuple[int | None, ...], player: int) -> tuple[str, ...]:
+    return tuple(
+        group for group, squares in GROUPS.items()
+        if all(owners[square] == player for square in squares)
+    )
+
+
 def legal_offer(view: GameView, offer: Offer) -> bool:
     """Check the same trade rules for the engine and the calculator."""
     if offer.proposer == offer.recipient:
