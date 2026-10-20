@@ -1,5 +1,6 @@
 from typing import Protocol
 
+from .bargaining import NashTrading, TitForTatTrading
 from .board import GROUPS
 from .models import GameView, Offer, Reply, completed_sets, legal_offer, ownership_after_trade
 from .valuation import building_gain, purchase_gain
@@ -144,6 +145,14 @@ class SimpleBot(SimpleDecisions, NoTrading):
 
 def baseline_bot() -> PolicyBot:
     return PolicyBot(SimpleDecisions(), SetCompletionTrading())
+
+
+def cooperator_bot() -> PolicyBot:
+    return PolicyBot(ExpectedValueDecisions(), NashTrading())
+
+
+def reciprocator_bot() -> PolicyBot:
+    return PolicyBot(ExpectedValueDecisions(), TitForTatTrading())
 
 
 class AcceptingBot(SimpleBot):
