@@ -4,7 +4,7 @@ from collections import Counter
 from dataclasses import dataclass
 from functools import cache
 
-from .board import BOARD, CHANCE, CHEST, GROUPS, JAIL, CardMove, Kind
+from .board import BOARD, CHANCE, CHEST, JAIL, CardMove, Kind
 from .models import GameView, Offer, completed_sets, legal_offer, ownership_after_trade
 
 
@@ -12,7 +12,7 @@ from .models import GameView, Offer, completed_sets, legal_offer, ownership_afte
 IN_JAIL = len(BOARD)
 DICE_TOTALS = Counter(first + second for first in range(1, 7) for second in range(1, 7))
 SET_BONUS = 50
-MINIMUM_PURCHASE_RETURN = 0.10
+CAPITAL_HURDLE = 0.10
 
 
 def _destinations(square: int) -> list[int]:
@@ -83,6 +83,8 @@ def _future_opponent_turns(view: GameView) -> float:
     # Buying, building, and trading all happen after the current dice roll.
     active_players = sum(not p.bankrupt for p in view.players)
     remaining_turns = max(0, view.turn_limit - view.turns - 1)
+    if active_players < 2:
+        return 0.0
     return remaining_turns * (active_players - 1) / active_players
 
 
@@ -112,7 +114,7 @@ def _deed_value(view: GameView, squares: tuple[int, ...]) -> int:
 
 
 def purchase_gain(view: GameView, player: int, square: int) -> float:
-    """Expected profit above a small hurdle for tying up cash in a deed."""
+    """Expected gain after a liquidity charge; deeds retain face value at the cap."""
     prop = view.board[square].property
     assert prop is not None
     new_owners = list(view.owners)
@@ -124,19 +126,17 @@ def purchase_gain(view: GameView, player: int, square: int) -> float:
     rent_before = _income_per_opponent_turn(view, view.owners, player, before)
     rent_after = _income_per_opponent_turn(view, owners, player, after)
     bonus = (len(after) - len(before)) * SET_BONUS if future_turns else 0
-    # A purchased deed still counts at face value in the final net worth.
-    cash_hurdle = prop.price * MINIMUM_PURCHASE_RETURN
-    return (rent_after - rent_before) * future_turns + bonus - cash_hurdle
+    return (rent_after - rent_before) * future_turns + bonus - prop.price * CAPITAL_HURDLE
 
 
 def building_gain(view: GameView, square: int) -> float:
-    """Expected extra rent from a legal upgrade, minus the building cost."""
+    """Extra rent minus the same liquidity charge used for purchases."""
     prop = view.board[square].property
     assert prop is not None
     level = view.buildings[square]
     current_rent = 2 * prop.rents[0] if level == 0 else prop.rents[level]
     additional_rent = prop.rents[level + 1] - current_rent
-    return landing_probabilities()[square] * additional_rent * _future_opponent_turns(view) - prop.build_cost
+    return landing_probabilities()[square] * additional_rent * _future_opponent_turns(view) - prop.build_cost * CAPITAL_HURDLE
 
 
 def score_trade(view: GameView, offer: Offer) -> tuple[TradeValue, TradeValue]:
@@ -155,8 +155,16 @@ def score_trade(view: GameView, offer: Offer) -> tuple[TradeValue, TradeValue]:
         new_sets = completed_sets(after, player)
         before_rent = _income_per_opponent_turn(view, view.owners, player, old_sets)
         after_rent = _income_per_opponent_turn(view, after, player, new_sets)
+        expense_change = 0.0
+        opponents = sum(not p.bankrupt for p in view.players) - 1
+        for other, state in enumerate(view.players):
+            if other == player or state.bankrupt:
+                continue
+            old_income = _income_per_opponent_turn(view, view.owners, other, completed_sets(view.owners, other))
+            new_income = _income_per_opponent_turn(view, after, other, completed_sets(after, other))
+            expense_change += (new_income - old_income) * opponent_turns / opponents
         return TradeValue(
-            player, cash, deeds, (after_rent - before_rent) * opponent_turns,
+            player, cash, deeds, (after_rent - before_rent) * opponent_turns - expense_change,
             (len(new_sets) - len(old_sets)) * set_bonus,
             tuple(group for group in new_sets if group not in old_sets),
             tuple(group for group in old_sets if group not in new_sets),

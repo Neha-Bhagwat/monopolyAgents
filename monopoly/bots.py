@@ -29,6 +29,11 @@ class PolicyBot:
         self.decisions = decisions
         self.trading = trading
 
+    def reset(self) -> None:
+        reset = getattr(self.trading, "reset", None)
+        if reset is not None:
+            reset()
+
     def buy(self, view: GameView, player: int, square: int) -> bool:
         return self.decisions.buy(view, player, square)
 

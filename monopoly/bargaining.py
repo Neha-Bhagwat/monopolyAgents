@@ -100,6 +100,9 @@ class TitForTatTrading:
     def __init__(self):
         self.last_offer_fair: dict[int, bool] = {}
 
+    def reset(self) -> None:
+        self.last_offer_fair.clear()
+
     def minimum_gain(self, opponent: int) -> int:
         if opponent not in self.last_offer_fair:
             return 10

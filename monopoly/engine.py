@@ -4,6 +4,7 @@ from random import Random
 
 from .board import BOARD, CHANCE, CHEST, GROUPS, JAIL, CardMove, Kind
 from .models import Bot, GameResult, GameView, Offer, PlayerView, Reply, TradeRecord, legal_offer
+from .valuation import score_trade
 
 
 @dataclass
@@ -21,10 +22,16 @@ class Game:
     ):
         if not 2 <= len(bots) <= 4:
             raise ValueError("A game needs two to four bots.")
-        if turn_limit < 1:
+        if type(turn_limit) is not int or turn_limit < 1:
             raise ValueError("The turn limit must be positive.")
+        if len({id(bot) for bot in bots}) != len(bots):
+            raise ValueError("Each seat needs a separate bot instance.")
 
         self.bots = tuple(bots)
+        for bot in self.bots:
+            reset = getattr(bot, "reset", None)
+            if reset is not None:
+                reset()
         self.players = [Player() for _ in bots]
         self.owners: list[int | None] = [None] * len(BOARD)
         self.buildings = [0] * len(BOARD)
@@ -94,6 +101,8 @@ class Game:
         position = state.position + dice
         if position >= len(BOARD):
             state.cash += 200
+            if self.trace is not None:
+                self.trace(f"Player {player + 1} passes Go and receives $200.")
         state.position = position % len(BOARD)
         if self.trace is not None:
             square = BOARD[state.position].name
@@ -114,7 +123,7 @@ class Game:
                     self.trace(f"Player {player + 1} builds on {BOARD[square].name} for ${prop.build_cost:,}.")
 
         offer = self.bots[player].propose(self.view(), player)
-        if offer is not None and offer.proposer == player:
+        if isinstance(offer, Offer) and offer.proposer == player:
             self.negotiate(offer)
 
     def _land(self, player: int) -> None:
@@ -123,6 +132,8 @@ class Game:
         if square.kind is Kind.PROPERTY:
             self._land_on_property(player, position)
         elif square.kind is Kind.TAX:
+            if self.trace is not None:
+                self.trace(f"Player {player + 1} owes ${square.tax} in tax.")
             self._pay(player, square.tax)
         elif square.kind is Kind.GO_TO_JAIL:
             self._send_to_jail(player)
@@ -139,16 +150,22 @@ class Game:
             if self.players[player].cash >= prop.price and self.bots[player].buy(self.view(), player, square):
                 self.players[player].cash -= prop.price
                 self.owners[square] = player
+                if self.trace is not None:
+                    self.trace(f"Player {player + 1} buys {BOARD[square].name} for ${prop.price}.")
         elif owner != player:
             level = self.buildings[square]
             rent = prop.rents[level]
             if level == 0 and all(self.owners[i] == owner for i in GROUPS[prop.group]):
                 rent *= 2
+            if self.trace is not None:
+                self.trace(f"Player {player + 1} owes Player {owner + 1} ${rent} in rent.")
             self._pay(player, rent, owner)
 
     def _send_to_jail(self, player: int) -> None:
         self.players[player].position = JAIL
         self.players[player].jailed = True
+        if self.trace is not None:
+            self.trace(f"Player {player + 1} is sent to Jail.")
 
     def _draw_card(self, player: int, deck: list[int | CardMove]) -> None:
         card = deck.pop(0)
@@ -156,9 +173,13 @@ class Game:
         if card is CardMove.ADVANCE_TO_GO:
             self.players[player].position = 0
             self.players[player].cash += 200
+            if self.trace is not None:
+                self.trace(f"Player {player + 1} draws Advance to Go and receives $200.")
         elif card is CardMove.GO_TO_JAIL:
             self._send_to_jail(player)
         elif isinstance(card, int):
+            if self.trace is not None:
+                self.trace(f"Player {player + 1} draws a cash card worth {card:+d} dollars.")
             if card >= 0:
                 self.players[player].cash += card
             else:
@@ -172,6 +193,8 @@ class Game:
             self.players[creditor].cash += paid
         if paid < amount:
             payer.bankrupt = True
+            if self.trace is not None:
+                self.trace(f"Player {player + 1} pays ${paid} and is bankrupt.")
             for square, owner in enumerate(self.owners):
                 if owner == player:
                     self.owners[square] = creditor
@@ -196,14 +219,18 @@ class Game:
                 self.trace("The engine rejects an illegal offer.")
             return False
         self.trades_proposed += 1
+        initiated_by = offer.proposer
         if self.trace is not None:
             self._trace_offer(offer, "offers")
         for round_number in range(1, 4):
             reply = self.bots[offer.recipient].respond(self.view(), offer, round_number)
             if reply is Reply.ACCEPT:
+                values = score_trade(self.view(), offer)
                 self._apply_trade(offer)
                 self.trades_accepted += 1
-                self.trade_history.append(TradeRecord(self.turns + 1, offer))
+                self.trade_history.append(TradeRecord(
+                    self.turns + 1, offer, initiated_by, values[0].total, values[1].total,
+                ))
                 if self.trace is not None:
                     self.trace(f"Player {offer.recipient + 1} accepts. The trade goes through.")
                     for seat in (offer.proposer, offer.recipient):
@@ -214,8 +241,12 @@ class Game:
                     self.trace(f"Player {offer.recipient + 1} rejects the offer.")
                 return False
             if (reply.proposer, reply.recipient) != (offer.recipient, offer.proposer):
+                if self.trace is not None:
+                    self.trace("The counteroffer names the wrong players. Negotiation ends.")
                 return False
             if not self.legal_offer(reply):
+                if self.trace is not None:
+                    self.trace("The counteroffer is illegal. Negotiation ends.")
                 return False
             offer = reply
             if self.trace is not None:

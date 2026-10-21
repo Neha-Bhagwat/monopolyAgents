@@ -53,6 +53,8 @@ def completed_sets(owners: tuple[int | None, ...], player: int) -> tuple[str, ..
 
 def legal_offer(view: GameView, offer: Offer) -> bool:
     """Check the same trade rules for the engine and the calculator."""
+    if not isinstance(offer, Offer):
+        return False
     if offer.proposer == offer.recipient:
         return False
     if not any((offer.give_properties, offer.ask_properties, offer.give_cash, offer.ask_cash)):
@@ -67,6 +69,8 @@ def legal_offer(view: GameView, offer: Offer) -> bool:
             return False
         state = view.players[player]
         if state.bankrupt or type(cash) is not int or not 0 <= cash <= state.cash:
+            return False
+        if not isinstance(properties, tuple) or any(type(square) is not int for square in properties):
             return False
         if len(set(properties)) != len(properties):
             return False
@@ -90,6 +94,9 @@ class Reply(Enum):
 class TradeRecord:
     turn: int
     offer: Offer
+    initiated_by: int = -1
+    proposer_gain: float = 0.0
+    recipient_gain: float = 0.0
 
 
 class Bot(Protocol):
