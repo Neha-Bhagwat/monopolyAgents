@@ -1,10 +1,12 @@
 import argparse
 from dataclasses import replace
+from pathlib import Path
 
 from .bargaining import NashTrading, TitForTatTrading
 from .board import BOARD
 from .bots import AcceptingBot, SimpleBot, baseline_bot, cooperator_bot, reciprocator_bot
 from .engine import Game
+from .experiments import print_summary, replay, run_pilot
 from .models import GameView, Offer, Reply
 from .valuation import landing_probabilities, score_trade
 
@@ -89,7 +91,7 @@ def print_valuation() -> None:
             print(f"  Completes: {', '.join(value.sets_gained)}")
         print(f"  Cash change:            {value.cash_change:+.2f}")
         print(f"  Printed deed value:     {value.deed_change:+.2f}")
-        print(f"  Estimated rent change:  {value.rent_change:+.2f}")
+        print(f"  Estimated net rent:     {value.rent_change:+.2f}")
         print(f"  Color-set bonus change: {value.set_bonus_change:+.2f}")
         print(f"  Estimated total ($):    {value.total:+.2f}")
     print("\nThe offer was scored only. No money or deeds moved.")
@@ -131,15 +133,41 @@ def print_bargaining_demo() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the simplified Monopoly demo.")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for the full game.")
+    parser.add_argument("--seed", type=int, help="Seed for a single full game (default 42).")
     demos = parser.add_mutually_exclusive_group()
     demos.add_argument("--trade-demo", action="store_true", help="Watch a scripted trade during play.")
     demos.add_argument("--valuation-demo", action="store_true", help="Score the scripted trade.")
     demos.add_argument("--baseline-game", action="store_true", help="Play four Baselines from Go.")
     demos.add_argument("--bargaining-game", action="store_true", help="Play both negotiators and two Baselines.")
     demos.add_argument("--bargaining-demo", action="store_true", help="Compare replies to an example offer.")
+    demos.add_argument("--pilot", action="store_true", help="Run the 120-game controlled comparison.")
+    demos.add_argument("--replay", type=Path, metavar="FOLDER", help="Replay a game from a pilot folder.")
+    parser.add_argument("--output", type=Path, help="New pilot folder (default results/step5).")
+    parser.add_argument("--game-id", help="Saved game ID to replay.")
     args = parser.parse_args()
-    if args.trade_demo:
+    if args.replay and not args.game_id:
+        parser.error("--replay requires --game-id")
+    if args.game_id and not args.replay:
+        parser.error("--game-id requires --replay")
+    if args.output and not args.pilot:
+        parser.error("--output requires --pilot")
+    if args.seed is not None and (args.pilot or args.replay or args.trade_demo or
+                                  args.valuation_demo or args.bargaining_demo):
+        parser.error("--seed applies to single full games. The pilot uses seeds 0 through 9.")
+    seed = 42 if args.seed is None else args.seed
+    if args.pilot:
+        output = args.output or Path("results/step5")
+        try:
+            print_summary(run_pilot(output))
+        except (OSError, ValueError) as error:
+            parser.exit(2, f"{error}\n")
+        print(f"Saved results in {output.resolve()}")
+    elif args.replay:
+        try:
+            replay(args.replay, args.game_id)
+        except (OSError, ValueError) as error:
+            parser.exit(2, f"{error}\n")
+    elif args.trade_demo:
         print_trade()
     elif args.valuation_demo:
         print_valuation()
@@ -148,11 +176,11 @@ def main() -> None:
     elif args.bargaining_game:
         print("Players 1 to 4: Cooperator, Reciprocator, Baseline, Baseline.")
         bots = [cooperator_bot(), reciprocator_bot(), baseline_bot(), baseline_bot()]
-        print_game(Game(bots, seed=args.seed), show_trades=True)
+        print_game(Game(bots, seed=seed), show_trades=True)
     elif args.baseline_game:
-        print_game(Game([baseline_bot() for _ in range(4)], seed=args.seed), show_trades=True)
+        print_game(Game([baseline_bot() for _ in range(4)], seed=seed), show_trades=True)
     else:
-        print_game(Game([SimpleBot() for _ in range(4)], seed=args.seed))
+        print_game(Game([SimpleBot() for _ in range(4)], seed=seed))
 
 
 if __name__ == "__main__":
