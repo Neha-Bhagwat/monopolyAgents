@@ -2,9 +2,9 @@
 
 from collections import Counter
 from dataclasses import dataclass
-from functools import cache
+from functools import cache, lru_cache
 
-from .board import BOARD, CHANCE, CHEST, JAIL, CardMove, Kind
+from .board import BOARD, CHANCE, CHEST, GROUPS, JAIL, CardMove, Kind
 from .models import GameView, Offer, completed_sets, legal_offer, ownership_after_trade
 
 
@@ -13,6 +13,7 @@ IN_JAIL = len(BOARD)
 DICE_TOTALS = Counter(first + second for first in range(1, 7) for second in range(1, 7))
 SET_BONUS = 50
 CAPITAL_HURDLE = 0.10
+BUILD_RESERVE = 250
 
 
 def _destinations(square: int) -> list[int]:
@@ -70,13 +71,15 @@ class TradeValue:
     cash_change: int
     deed_change: int
     rent_change: float
+    development_change: float
     set_bonus_change: int
     sets_gained: tuple[str, ...]
     sets_lost: tuple[str, ...]
 
     @property
     def total(self) -> float:
-        return self.cash_change + self.deed_change + self.rent_change + self.set_bonus_change
+        return (self.cash_change + self.deed_change + self.rent_change
+                + self.development_change + self.set_bonus_change)
 
 
 def _future_opponent_turns(view: GameView) -> float:
@@ -111,6 +114,56 @@ def _deed_value(view: GameView, squares: tuple[int, ...]) -> int:
         assert prop is not None
         value += prop.price
     return value
+
+
+@lru_cache(maxsize=4096)
+def _development_income(
+    view: GameView, owners: tuple[int | None, ...], cash: tuple[int, ...],
+) -> tuple[float, ...]:
+    """Extra gross rent from affordable future upgrades; never changes the game.
+
+    Use today's cash only, keep $250, and build at most once per future turn.
+    All players use the same expected-value building assumption. Future Go
+    money, rents funding more buildings, new trades, and new jail visits are
+    deliberately omitted. This is a small forecast, not a second game engine.
+    """
+    remaining = max(0, view.turn_limit - view.turns - 1)
+    order = [(view.active_player + offset) % len(view.players)
+             for offset in range(1, len(view.players) + 1)]
+    order = [player for player in order if not view.players[player].bankrupt]
+    income = [0.0] * len(view.players)
+    if len(order) < 2 or remaining == 0:
+        return tuple(income)
+    chances = landing_probabilities()
+    for first_turn, player in enumerate(order, start=1):
+        groups = [GROUPS[name] for name in completed_sets(owners, player)]
+        budget = cash[player] - BUILD_RESERVE
+        levels = list(view.buildings)
+        if view.players[player].jailed:
+            first_turn += len(order)
+        for build_turn in range(first_turn, remaining, len(order)):
+            future_visits = (remaining - build_turn) * (len(order) - 1) / len(order)
+            best_square, best_gain, extra_income = None, 0.0, 0.0
+            for group in groups:
+                lowest = min(levels[square] for square in group)
+                for square in group:
+                    prop = view.board[square].property
+                    assert prop is not None
+                    if levels[square] != lowest or lowest == 5 or prop.build_cost > budget:
+                        continue
+                    rent_before = 2 * prop.rents[0] if lowest == 0 else prop.rents[lowest]
+                    extra = chances[square] * (prop.rents[lowest + 1] - rent_before) * future_visits
+                    gain = extra - prop.build_cost * CAPITAL_HURDLE
+                    if gain > best_gain:
+                        best_square, best_gain, extra_income = square, gain, extra
+            if best_square is None:
+                break
+            prop = view.board[best_square].property
+            assert prop is not None
+            levels[best_square] += 1
+            budget -= prop.build_cost
+            income[player] += extra_income
+    return tuple(income)
 
 
 def purchase_gain(view: GameView, player: int, square: int) -> float:
@@ -149,6 +202,13 @@ def score_trade(view: GameView, offer: Offer) -> tuple[TradeValue, TradeValue]:
     set_bonus = SET_BONUS if opponent_turns else 0
     cash_change = offer.ask_cash - offer.give_cash
     deed_change = _deed_value(view, offer.ask_properties) - _deed_value(view, offer.give_properties)
+    before_cash = tuple(state.cash for state in view.players)
+    after_cash = list(before_cash)
+    after_cash[offer.proposer] += cash_change
+    after_cash[offer.recipient] -= cash_change
+    before_development = _development_income(view, view.owners, before_cash)
+    after_development = _development_income(view, after, tuple(after_cash))
+    development_delta = [new - old for old, new in zip(before_development, after_development)]
 
     def compare(player: int, cash: int, deeds: int) -> TradeValue:
         old_sets = completed_sets(view.owners, player)
@@ -165,6 +225,10 @@ def score_trade(view: GameView, offer: Offer) -> tuple[TradeValue, TradeValue]:
             expense_change += (new_income - old_income) * opponent_turns / opponents
         return TradeValue(
             player, cash, deeds, (after_rent - before_rent) * opponent_turns - expense_change,
+            development_delta[player] - sum(
+                development_delta[other] / opponents for other, state in enumerate(view.players)
+                if other != player and not state.bankrupt
+            ),
             (len(new_sets) - len(old_sets)) * set_bonus,
             tuple(group for group in new_sets if group not in old_sets),
             tuple(group for group in old_sets if group not in new_sets),

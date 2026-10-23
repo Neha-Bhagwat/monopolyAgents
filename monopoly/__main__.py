@@ -92,6 +92,7 @@ def print_valuation() -> None:
         print(f"  Cash change:            {value.cash_change:+.2f}")
         print(f"  Printed deed value:     {value.deed_change:+.2f}")
         print(f"  Estimated net rent:     {value.rent_change:+.2f}")
+        print(f"  Future building rent:   {value.development_change:+.2f}")
         print(f"  Color-set bonus change: {value.set_bonus_change:+.2f}")
         print(f"  Estimated total ($):    {value.total:+.2f}")
     print("\nThe offer was scored only. No money or deeds moved.")
@@ -101,9 +102,13 @@ def print_bargaining_demo() -> None:
     game = Game([SimpleBot(), SimpleBot()])
     set_up_demo_board(game)
     game.turns = 109
+    # Limited cash keeps this example focused on bargaining thresholds.
+    for player in game.players:
+        player.cash = 150
     view = game.view()
     offer = replace(DEMO_OFFER, give_cash=0, ask_cash=90)
     print("Bargaining demo: Player 2 is deciding on this offer.")
+    print("Both players have $150, so neither can fund buildings after this offer.")
     print_offer(offer)
     proposer, recipient = score_trade(view, offer)
     print(f"Player 1's estimated gain is ${proposer.total:.2f}.")
@@ -114,6 +119,11 @@ def print_bargaining_demo() -> None:
         reply = strategy.respond(view, offer, 1)
         if reply is Reply.ACCEPT:
             print(f"{name} accepts.")
+        elif isinstance(reply, Offer):
+            print(f"{name} counters with:")
+            print_offer(reply)
+        else:
+            print(f"{name} rejects.")
 
     print("\nNow suppose Player 1 previously sent an unfair offer.")
     reciprocator = TitForTatTrading()
@@ -140,10 +150,12 @@ def main() -> None:
     demos.add_argument("--baseline-game", action="store_true", help="Play four Baselines from Go.")
     demos.add_argument("--bargaining-game", action="store_true", help="Play both negotiators and two Baselines.")
     demos.add_argument("--bargaining-demo", action="store_true", help="Compare replies to an example offer.")
-    demos.add_argument("--pilot", action="store_true", help="Run the 120-game controlled comparison.")
+    demos.add_argument("--pilot", action="store_true", help="Run a controlled comparison (120 games by default).")
     demos.add_argument("--replay", type=Path, metavar="FOLDER", help="Replay a game from a pilot folder.")
     parser.add_argument("--output", type=Path, help="New pilot folder (default results/step5).")
     parser.add_argument("--game-id", help="Saved game ID to replay.")
+    parser.add_argument("--seed-start", type=int, help="First pilot seed (default 0).")
+    parser.add_argument("--seed-count", type=int, help="Number of pilot seeds (default 10); each plays all four seats.")
     args = parser.parse_args()
     if args.replay and not args.game_id:
         parser.error("--replay requires --game-id")
@@ -151,14 +163,17 @@ def main() -> None:
         parser.error("--game-id requires --replay")
     if args.output and not args.pilot:
         parser.error("--output requires --pilot")
+    if (args.seed_start is not None or args.seed_count is not None) and not args.pilot:
+        parser.error("--seed-start and --seed-count require --pilot")
     if args.seed is not None and (args.pilot or args.replay or args.trade_demo or
                                   args.valuation_demo or args.bargaining_demo):
-        parser.error("--seed applies to single full games. The pilot uses seeds 0 through 9.")
+        parser.error("--seed applies to single full games. Use --seed-start and --seed-count for a pilot.")
     seed = 42 if args.seed is None else args.seed
     if args.pilot:
         output = args.output or Path("results/step5")
         try:
-            print_summary(run_pilot(output))
+            print_summary(run_pilot(output, seed_start=args.seed_start if args.seed_start is not None else 0,
+                                    seed_count=args.seed_count if args.seed_count is not None else 10))
         except (OSError, ValueError) as error:
             parser.exit(2, f"{error}\n")
         print(f"Saved results in {output.resolve()}")

@@ -103,18 +103,23 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
-def run_pilot(output: Path, progress: Callable[[str], None] = print) -> list[dict]:
+def run_pilot(
+    output: Path, progress: Callable[[str], None] = print,
+    *, seed_start: int = 0, seed_count: int = 10,
+) -> list[dict]:
+    if type(seed_start) is not int or seed_start < 0 or type(seed_count) is not int or seed_count < 1:
+        raise ValueError("Use a nonnegative starting seed and a positive seed count.")
     if output.exists():
         raise FileExistsError(f"{output} already exists. Use --output with a new folder.")
     version = source_hash()
     rows, trades = [], []
     for strategy in STRATEGIES:
-        for seed in range(10):
+        for seed in range(seed_start, seed_start + seed_count):
             for seat in range(4):
                 row, records = run_case(strategy, seed, seat)
                 rows.append(row)
                 trades.extend(records)
-        progress(f"Finished 40 games for {strategy}.")
+        progress(f"Finished {seed_count * 4} games for {strategy}.")
     if source_hash() != version:
         raise RuntimeError("The source changed during the run. Rerun with a stable version.")
     summary = summarize(rows)
@@ -131,7 +136,7 @@ def run_pilot(output: Path, progress: Callable[[str], None] = print) -> list[dic
         manifest = {
             "schema_version": SCHEMA_VERSION, "source_sha256": version,
             "python_version": platform.python_version(),
-            "seeds": list(range(10)), "test_seats": [1, 2, 3, 4],
+            "seeds": list(range(seed_start, seed_start + seed_count)), "test_seats": [1, 2, 3, 4],
             "strategies": list(STRATEGIES), "games": len(rows), "turn_limit": 150,
             "note": "Pilot only. Seeds repeat across seats and strategies.",
         }

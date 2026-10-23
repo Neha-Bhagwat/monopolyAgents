@@ -3,11 +3,10 @@ from typing import Protocol
 from .bargaining import NashTrading, TitForTatTrading
 from .board import GROUPS
 from .models import GameView, Offer, Reply, completed_sets, legal_offer, ownership_after_trade
-from .valuation import building_gain, purchase_gain
+from .valuation import BUILD_RESERVE, building_gain, purchase_gain
 
 
 BUY_RESERVE = 150
-BUILD_RESERVE = 250
 
 
 class BuyBuildPolicy(Protocol):
