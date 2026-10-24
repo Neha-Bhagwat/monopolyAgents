@@ -10,11 +10,13 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Callable
 
-from .bots import ExpectedValueDecisions, NoTrading, PolicyBot, baseline_bot, cooperator_bot, reciprocator_bot
+from .bots import (ExpectedValueDecisions, NoTrading, PolicyBot, adaptive_bot, baseline_bot,
+                   cooperator_bot, hard_bargainer_bot, reciprocator_bot, risk_averse_bot)
 from .engine import Game
 
 
-STRATEGIES = ("no_trade", "cooperator", "reciprocator")
+STRATEGIES = ("no_trade", "cooperator", "reciprocator", "hard_bargainer", "adaptive", "risk_averse")
+PILOT_STRATEGIES = STRATEGIES[:3]
 SCHEMA_VERSION = 1
 
 
@@ -33,6 +35,9 @@ def make_game(strategy: str, seed: int, seat: int, trace: Callable[[str], None] 
         "no_trade": lambda: PolicyBot(ExpectedValueDecisions(), NoTrading()),
         "cooperator": cooperator_bot,
         "reciprocator": reciprocator_bot,
+        "hard_bargainer": hard_bargainer_bot,
+        "adaptive": adaptive_bot,
+        "risk_averse": risk_averse_bot,
     }
     bots = [baseline_bot() for _ in range(4)]
     bots[seat] = factories[strategy]()
@@ -81,7 +86,7 @@ def summarize(rows: list[dict]) -> list[dict]:
     for strategy in STRATEGIES:
         group = [row for row in rows if row["strategy"] == strategy]
         if not group:
-            raise ValueError(f"No games found for {strategy}.")
+            continue
         wins = sum(int(row["test_won"]) for row in group)
         summary.append({
             "strategy": strategy,
@@ -106,14 +111,17 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
 def run_pilot(
     output: Path, progress: Callable[[str], None] = print,
     *, seed_start: int = 0, seed_count: int = 10,
+    strategies: tuple[str, ...] = PILOT_STRATEGIES,
 ) -> list[dict]:
     if type(seed_start) is not int or seed_start < 0 or type(seed_count) is not int or seed_count < 1:
         raise ValueError("Use a nonnegative starting seed and a positive seed count.")
+    if not strategies or any(s not in STRATEGIES for s in strategies) or len(set(strategies)) != len(strategies):
+        raise ValueError("Choose distinct supported strategies.")
     if output.exists():
         raise FileExistsError(f"{output} already exists. Use --output with a new folder.")
     version = source_hash()
     rows, trades = [], []
-    for strategy in STRATEGIES:
+    for strategy in strategies:
         for seed in range(seed_start, seed_start + seed_count):
             for seat in range(4):
                 row, records = run_case(strategy, seed, seat)
@@ -137,7 +145,7 @@ def run_pilot(
             "schema_version": SCHEMA_VERSION, "source_sha256": version,
             "python_version": platform.python_version(),
             "seeds": list(range(seed_start, seed_start + seed_count)), "test_seats": [1, 2, 3, 4],
-            "strategies": list(STRATEGIES), "games": len(rows), "turn_limit": 150,
+            "strategies": list(strategies), "games": len(rows), "turn_limit": 150,
             "note": "Pilot only. Seeds repeat across seats and strategies.",
         }
         (bundle / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

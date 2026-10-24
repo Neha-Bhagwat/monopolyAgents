@@ -3,10 +3,12 @@ from dataclasses import replace
 from pathlib import Path
 
 from .bargaining import NashTrading, TitForTatTrading
+from .advanced_bargaining import MinimaxRegretTrading, ZeuthenTrading, minimax_regret_choice
 from .board import BOARD
-from .bots import AcceptingBot, SimpleBot, baseline_bot, cooperator_bot, reciprocator_bot
+from .bots import (AcceptingBot, SimpleBot, adaptive_bot, baseline_bot, cooperator_bot,
+                   hard_bargainer_bot, reciprocator_bot, risk_averse_bot)
 from .engine import Game
-from .experiments import print_summary, replay, run_pilot
+from .experiments import PILOT_STRATEGIES, STRATEGIES, print_summary, replay, run_pilot
 from .models import GameView, Offer, Reply
 from .valuation import landing_probabilities, score_trade
 
@@ -141,6 +143,51 @@ def print_bargaining_demo() -> None:
     print("This demo compares decisions. No cash or deeds move.")
 
 
+def print_step6_demo() -> None:
+    print("Step 6: prepared examples, not a full game. Use --step6-game for live play.")
+    game = Game([adaptive_bot(), SimpleBot()])
+    set_up_demo_board(game)
+    game.turns = 109
+    for player in game.players:
+        player.cash = 150
+    view = game.view()
+
+    hard = ZeuthenTrading()
+    opening = hard.propose(view, 0)
+    print("\nHard-bargainer's preferred opening:")
+    print_offer(opening)
+    incoming = Offer(1, 0, (3,), (5,), give_cash=40)
+    print("The other player counters with Baltic and $40 for Oriental.")
+    reply = hard.respond(view, incoming, 2)
+    print("Hard-bargainer's response:")
+    print_offer(reply) if isinstance(reply, Offer) else print(reply.name)
+
+    adaptive = game.bots[0].trading
+    print("\nAdaptive's beliefs (easy, moderate, demanding):")
+    print(tuple(round(p, 3) for p in adaptive.beliefs_for(1)))
+    for attempt in range(2):
+        offer = adaptive.propose(game.view(), 0)
+        print(f"Prepared rejection {attempt + 1}, Adaptive offers:")
+        print_offer(offer)
+        # The prepared recipient is a nontrading bot. Actual engine feedback updates beliefs.
+        game.negotiate(offer)
+        print("Updated beliefs:", tuple(round(p, 3) for p in adaptive.beliefs_for(1)))
+    print("Adaptive's next preferred offer after those replies:")
+    print_offer(adaptive.propose(game.view(), 0))
+
+    print("\nRisk-averse: a small illustrative payoff table, separate from the board.")
+    names = ("No deal", "Firm", "Moderate", "Safe")
+    payoffs = [(0, 0, 0), (100, 0, 0), (60, 60, 0), (40, 40, 40)]
+    for name, row in zip(names, payoffs):
+        print(f"{name:10} {row}")
+    print("Columns mean easy, moderate, and demanding opponent assumptions.")
+    print("Lowest worst regret:", names[minimax_regret_choice(payoffs)], "(regret 40).")
+    print("Risk-averse's actual offer on the prepared Monopoly board:")
+    offer = MinimaxRegretTrading().propose(view, 0)
+    print_offer(offer) if offer is not None else print("No offer.")
+    print("No deals were accepted in these prepared examples.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the simplified Monopoly demo.")
     parser.add_argument("--seed", type=int, help="Seed for a single full game (default 42).")
@@ -150,12 +197,15 @@ def main() -> None:
     demos.add_argument("--baseline-game", action="store_true", help="Play four Baselines from Go.")
     demos.add_argument("--bargaining-game", action="store_true", help="Play both negotiators and two Baselines.")
     demos.add_argument("--bargaining-demo", action="store_true", help="Compare replies to an example offer.")
+    demos.add_argument("--step6-demo", action="store_true", help="Explain all three new bargaining rules.")
+    demos.add_argument("--step6-game", action="store_true", help="Play the three new negotiators and one Baseline.")
     demos.add_argument("--pilot", action="store_true", help="Run a controlled comparison (120 games by default).")
     demos.add_argument("--replay", type=Path, metavar="FOLDER", help="Replay a game from a pilot folder.")
     parser.add_argument("--output", type=Path, help="New pilot folder (default results/step5).")
     parser.add_argument("--game-id", help="Saved game ID to replay.")
     parser.add_argument("--seed-start", type=int, help="First pilot seed (default 0).")
     parser.add_argument("--seed-count", type=int, help="Number of pilot seeds (default 10); each plays all four seats.")
+    parser.add_argument("--all-strategies", action="store_true", help="With --pilot, test all five bargaining rules plus no trade.")
     args = parser.parse_args()
     if args.replay and not args.game_id:
         parser.error("--replay requires --game-id")
@@ -163,17 +213,20 @@ def main() -> None:
         parser.error("--game-id requires --replay")
     if args.output and not args.pilot:
         parser.error("--output requires --pilot")
+    if args.all_strategies and not args.pilot:
+        parser.error("--all-strategies requires --pilot")
     if (args.seed_start is not None or args.seed_count is not None) and not args.pilot:
         parser.error("--seed-start and --seed-count require --pilot")
     if args.seed is not None and (args.pilot or args.replay or args.trade_demo or
-                                  args.valuation_demo or args.bargaining_demo):
+                                  args.valuation_demo or args.bargaining_demo or args.step6_demo):
         parser.error("--seed applies to single full games. Use --seed-start and --seed-count for a pilot.")
     seed = 42 if args.seed is None else args.seed
     if args.pilot:
         output = args.output or Path("results/step5")
         try:
             print_summary(run_pilot(output, seed_start=args.seed_start if args.seed_start is not None else 0,
-                                    seed_count=args.seed_count if args.seed_count is not None else 10))
+                                    seed_count=args.seed_count if args.seed_count is not None else 10,
+                                    strategies=STRATEGIES if args.all_strategies else PILOT_STRATEGIES))
         except (OSError, ValueError) as error:
             parser.exit(2, f"{error}\n")
         print(f"Saved results in {output.resolve()}")
@@ -188,6 +241,12 @@ def main() -> None:
         print_valuation()
     elif args.bargaining_demo:
         print_bargaining_demo()
+    elif args.step6_demo:
+        print_step6_demo()
+    elif args.step6_game:
+        print("Players 1 to 4: Hard-bargainer, Adaptive, Risk-averse, Baseline.")
+        bots = [hard_bargainer_bot(), adaptive_bot(), risk_averse_bot(), baseline_bot()]
+        print_game(Game(bots, seed=seed), show_trades=True)
     elif args.bargaining_game:
         print("Players 1 to 4: Cooperator, Reciprocator, Baseline, Baseline.")
         bots = [cooperator_bot(), reciprocator_bot(), baseline_bot(), baseline_bot()]
