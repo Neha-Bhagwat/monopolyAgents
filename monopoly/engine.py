@@ -225,6 +225,7 @@ class Game:
         for round_number in range(1, 4):
             reply = self.bots[offer.recipient].respond(self.view(), offer, round_number)
             if reply is Reply.ACCEPT:
+                self._observe_response(offer, True)
                 values = score_trade(self.view(), offer)
                 self._apply_trade(offer)
                 self.trades_accepted += 1
@@ -237,6 +238,8 @@ class Game:
                         self.trace(f"Player {seat + 1} now has ${self.players[seat].cash:,} in cash.")
                 return True
             if not isinstance(reply, Offer):
+                if reply is Reply.REJECT:
+                    self._observe_response(offer, False)
                 if self.trace is not None:
                     self.trace(f"Player {offer.recipient + 1} rejects the offer.")
                 return False
@@ -248,12 +251,19 @@ class Game:
                 if self.trace is not None:
                     self.trace("The counteroffer is illegal. Negotiation ends.")
                 return False
+            self._observe_response(offer, False)
             offer = reply
             if self.trace is not None:
                 self._trace_offer(offer, "counters with")
         if self.trace is not None:
             self.trace("The negotiation ends without a trade.")
         return False
+
+    def _observe_response(self, offer: Offer, accepted: bool) -> None:
+        """Notify only the sender, before transfer; a legal counter rejects its offer."""
+        observe = getattr(self.bots[offer.proposer], "observe_response", None)
+        if observe is not None:
+            observe(self.view(), offer, accepted)
 
     def _trace_offer(self, offer: Offer, action: str) -> None:
         assert self.trace is not None

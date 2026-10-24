@@ -1,5 +1,6 @@
 from typing import Protocol
 
+from .advanced_bargaining import BayesianTrading, MinimaxRegretTrading, ZeuthenTrading
 from .bargaining import NashTrading, TitForTatTrading
 from .board import GROUPS
 from .models import GameView, Offer, Reply, completed_sets, legal_offer, ownership_after_trade
@@ -44,6 +45,11 @@ class PolicyBot:
 
     def respond(self, view: GameView, offer: Offer, round_number: int) -> Reply | Offer:
         return self.trading.respond(view, offer, round_number)
+
+    def observe_response(self, view: GameView, offer: Offer, accepted: bool) -> None:
+        observe = getattr(self.trading, "observe_response", None)
+        if observe is not None:
+            observe(view, offer, accepted)
 
 
 class SimpleDecisions:
@@ -157,6 +163,18 @@ def cooperator_bot() -> PolicyBot:
 
 def reciprocator_bot() -> PolicyBot:
     return PolicyBot(ExpectedValueDecisions(), TitForTatTrading())
+
+
+def hard_bargainer_bot() -> PolicyBot:
+    return PolicyBot(ExpectedValueDecisions(), ZeuthenTrading())
+
+
+def adaptive_bot() -> PolicyBot:
+    return PolicyBot(ExpectedValueDecisions(), BayesianTrading())
+
+
+def risk_averse_bot() -> PolicyBot:
+    return PolicyBot(ExpectedValueDecisions(), MinimaxRegretTrading())
 
 
 class AcceptingBot(SimpleBot):
