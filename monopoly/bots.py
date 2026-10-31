@@ -173,8 +173,9 @@ def adaptive_bot() -> PolicyBot:
     return PolicyBot(ExpectedValueDecisions(), BayesianTrading())
 
 
-def risk_averse_bot() -> PolicyBot:
-    return PolicyBot(ExpectedValueDecisions(), MinimaxRegretTrading())
+def risk_averse_bot():
+    from .advanced_decisions import ProspectTheoryDecisions
+    return PolicyBot(ProspectTheoryDecisions(), MinimaxRegretTrading())
 
 
 class AcceptingBot(SimpleBot):
