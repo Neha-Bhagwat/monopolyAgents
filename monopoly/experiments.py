@@ -35,7 +35,7 @@ def make_game(strategy: str, seed: int, seat: int, trace: Callable[[str], None] 
         "no_trade": lambda: PolicyBot(ExpectedValueDecisions(), NoTrading()),
         "cooperator": cooperator_bot,
         "reciprocator": reciprocator_bot,
-        "hard_bargainer": hard_bargainer_bot,
+        "hard_bargainer": lambda: hard_bargainer_bot(use_expectimax=False),
         "adaptive": adaptive_bot,
         "risk_averse": risk_averse_bot,
     }

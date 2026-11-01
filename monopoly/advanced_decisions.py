@@ -1,13 +1,247 @@
+"""Bounded search decisions; MCTS and prospect theory remain future work."""
+
+from dataclasses import replace
+from functools import lru_cache
+
+from .board import BOARD, CHANCE, CHEST, GROUPS, Kind
+from .engine import Game, Player
 from .models import GameView
+from .valuation import (BUILD_RESERVE, CAPITAL_HURDLE, DICE_TOTALS, SET_BONUS,
+                        building_gain, landing_probabilities, purchase_gain)
+
+
+@lru_cache(maxsize=4096)
+def _assets(owners: tuple[int | None, ...], buildings: tuple[int, ...], players: int):
+    """Immutable board-only data shared by leaves with different dice/cash states.
+
+    The engine uses the fixed BOARD. Cash, turn, position, and the searcher's
+    identity do not affect these quantities and must not fragment the cache.
+    """
+    capital = [0] * players
+    incomes = [0.0] * players
+    sets = [0] * players
+    builds = [[] for _ in range(players)]
+    completed = set()
+    for group, squares in GROUPS.items():
+        owner = owners[squares[0]]
+        if owner is None or not all(owners[square] == owner for square in squares):
+            continue
+        completed.add(group)
+        sets[owner] += 1
+        lowest = min(buildings[square] for square in squares)
+        if lowest < 5:
+            builds[owner].extend(square for square in squares if buildings[square] == lowest)
+    for square, chance in enumerate(landing_probabilities()):
+        owner = owners[square]
+        if owner is None:
+            continue
+        prop = BOARD[square].property
+        level = buildings[square]
+        capital[owner] += prop.price + level * prop.build_cost
+        rent = prop.rents[level]
+        if level == 0 and prop.group in completed:
+            rent *= 2
+        incomes[owner] += chance * rent
+    return tuple(capital), tuple(incomes), tuple(sets), tuple(tuple(b) for b in builds)
+
+
+class _Forecast(Game):
+    """Private copy using engine landing/payment rules, without bots or RNG.
+
+    Unowned purchases are deferred to the search's decision node. Only view,
+    landing, payment, build-options and net-worth helpers are used, never play.
+    """
+
+    def __init__(self, view: GameView):
+        self.players = [Player(p.cash, p.position, p.jailed, p.bankrupt) for p in view.players]
+        self.owners = list(view.owners)
+        self.buildings = list(view.buildings)
+        self.active_player = view.active_player
+        self.turns = view.turns
+        self.turn_limit = view.turn_limit
+        self.trace = None
+        self.chance = list(CHANCE)
+        self.chest = list(CHEST)
+
+    def _land_on_property(self, player: int, square: int) -> None:
+        if self.owners[square] is not None:
+            super()._land_on_property(player, square)
+
+
+def _buy(view: GameView, player: int, square: int) -> GameView:
+    players = list(view.players)
+    players[player] = replace(players[player], cash=players[player].cash - view.board[square].property.price)
+    owners = list(view.owners)
+    owners[square] = player
+    return replace(view, players=tuple(players), owners=tuple(owners))
+
+
+def _build(view: GameView, player: int, square: int) -> GameView:
+    players = list(view.players)
+    players[player] = replace(players[player], cash=players[player].cash - view.board[square].property.build_cost)
+    buildings = list(view.buildings)
+    buildings[square] += 1
+    return replace(view, players=tuple(players), buildings=tuple(buildings))
+
 
 class ExpectimaxDecisions:
+    """Maximize estimated relative wealth over a bounded chance tree.
+
+    Depth counts future individual player turns, not full rounds. Dice outcomes
+    are exact; unknown cards are independent uniform draws from the fixed deck.
+    Opponents use expected-value buy/build choices. Future trades are omitted.
+    Leaves value current assets, stationary expected net rent, complete sets and
+    liquidity. This is a heuristic planner, not a trained model or win oracle.
+    """
+
+    def __init__(self, depth: int = 2, max_nodes: int = 1000):
+        if type(depth) is not int or not 1 <= depth <= 3:
+            raise ValueError("Expectimax depth must be 1, 2, or 3 player turns.")
+        if type(max_nodes) is not int or max_nodes < 1:
+            raise ValueError("Expectimax max_nodes must be a positive integer.")
+        self.depth = depth
+        self.max_nodes = max_nodes
+        self._transpositions: dict[tuple, tuple[float, int]] = {}
+
+    @staticmethod
+    def _can_buy(view: GameView, player: int, square: int) -> bool:
+        prop = view.board[square].property
+        return (not view.players[player].bankrupt and prop is not None
+                and view.owners[square] is None
+                and view.players[player].cash >= prop.price + 150)
+
+    @staticmethod
+    def _build_options(view: GameView, player: int) -> tuple[int, ...]:
+        candidates = _assets(view.owners, view.buildings, len(view.players))[3][player]
+        return tuple(square for square in candidates
+                     if view.players[player].cash >=
+                     view.board[square].property.build_cost + BUILD_RESERVE)
+
     def buy(self, view: GameView, player: int, square: int) -> bool:
-        # Compare expected outcomes of buying vs skipping
-        pass
+        self._transpositions.clear()
+        if not self._can_buy(view, player, square):
+            return False
+        # A purchase is followed by this turn's build opportunity in the engine.
+        skip = self._finish_build(view, player, self.depth, [0])
+        purchase = self._finish_build(_buy(view, player, square), player, self.depth, [0])
+        return purchase > skip + 1e-9
 
     def build(self, view: GameView, player: int, legal: tuple[int, ...]) -> int | None:
-        # Evaluate legal builds using lookahead
-        pass
+        self._transpositions.clear()
+        best, value = None, self._next_turn(view, player, self.depth, [0])
+        for square in self._build_options(view, player):
+            if square not in legal:
+                continue
+            candidate = self._next_turn(_build(view, player, square), player, self.depth, [0])
+            if candidate > value + 1e-9:
+                best, value = square, candidate
+        return best
+
+    def _next_turn(self, view: GameView, player: int, depth: int, budget: list[int]) -> float:
+        survivors = [i for i, p in enumerate(view.players) if not p.bankrupt]
+        if len(survivors) <= 1:
+            return self._evaluate(view, player)
+        active = (view.active_player + 1) % len(view.players)
+        while active not in survivors:
+            active = (active + 1) % len(view.players)
+        next_view = GameView(view.board, view.players, view.owners, view.buildings,
+                             active, view.turns + 1, view.turn_limit)
+        return self._search(next_view, player, depth, budget)
+
+    def _search(self, view: GameView, player: int, depth: int, budget: list[int]) -> float:
+        if (depth == 0 or view.turns >= view.turn_limit or view.players[player].bankrupt
+                or sum(not p.bankrupt for p in view.players) <= 1
+                or budget[0] >= self.max_nodes):
+            return self._evaluate(view, player)
+        # Only complete subtrees are reusable. Charge their original expansion
+        # cost on a hit: otherwise memoization silently changes budget cutoffs.
+        key = (view.players, view.owners, view.buildings, view.active_player,
+               view.turns, view.turn_limit, player, depth)
+        cached = self._transpositions.get(key)
+        if cached is not None and budget[0] + cached[1] < self.max_nodes:
+            budget[0] += cached[1]
+            return cached[0]
+        start = budget[0]
+        budget[0] += 1
+        value = sum(probability * self._after_landing(outcome, player, depth - 1, budget, skipped)
+                    for probability, outcome, skipped in self._outcomes(view))
+        if budget[0] < self.max_nodes and len(self._transpositions) < 4096:
+            self._transpositions[key] = (value, budget[0] - start)
+        return value
+
+    @staticmethod
+    def _outcomes(view: GameView):
+        """Yield (probability, state, skip-actions) for one future movement."""
+        active = view.active_player
+        if view.players[active].jailed:
+            game = _Forecast(view)
+            game.players[active].jailed = False
+            yield 1.0, game.view(), True
+            return
+        for total, ways in DICE_TOTALS.items():
+            position = (view.players[active].position + total) % len(view.board)
+            kind = view.board[position].kind
+            cards = CHANCE if kind is Kind.CHANCE else CHEST if kind is Kind.CHEST else (None,)
+            for card in cards:
+                game = _Forecast(view)
+                if view.players[active].position + total >= len(view.board):
+                    game.players[active].cash += 200
+                game.players[active].position = position
+                if kind is Kind.CHANCE:
+                    game.chance = [card]
+                elif kind is Kind.CHEST:
+                    game.chest = [card]
+                game._land(active)
+                state = game.players[active]
+                yield ways / (36 * len(cards)), game.view(), state.jailed or state.bankrupt
+
+    def _after_landing(self, view: GameView, player: int, depth: int,
+                       budget: list[int], skipped: bool) -> float:
+        active = view.active_player
+        if skipped or sum(not p.bankrupt for p in view.players) <= 1:
+            return self._next_turn(view, player, depth, budget)
+        square = view.players[active].position
+        if self._can_buy(view, active, square):
+            if active == player:
+                return max(self._finish_build(view, player, depth, budget),
+                           self._finish_build(_buy(view, active, square), player, depth, budget))
+            if purchase_gain(view, active, square) > 0:
+                view = _buy(view, active, square)
+        return self._finish_build(view, player, depth, budget)
+
+    def _finish_build(self, view: GameView, player: int, depth: int, budget: list[int]) -> float:
+        active = view.active_player
+        options = self._build_options(view, active)
+        if not options:
+            return self._next_turn(view, player, depth, budget)
+        if active == player:
+            values = [self._next_turn(view, player, depth, budget)]
+            values.extend(self._next_turn(_build(view, active, square), player, depth, budget)
+                          for square in options)
+            return max(values)
+        best = max(options, key=lambda square: building_gain(view, square), default=None)
+        if best is not None and building_gain(view, best) > 0:
+            view = _build(view, active, best)
+        return self._next_turn(view, player, depth, budget)
+
+    @staticmethod
+    def _evaluate(view: GameView, player: int) -> float:
+        if view.players[player].bankrupt:
+            return -100_000.0
+        survivors = [i for i, p in enumerate(view.players) if not p.bankrupt]
+        if len(survivors) == 1:
+            return 100_000.0
+        capital, incomes, sets, _ = _assets(view.owners, view.buildings, len(view.players))
+        worth = [p.cash + capital[i] for i, p in enumerate(view.players)]
+        if view.turns >= view.turn_limit:
+            return worth[player] - max(worth[i] for i in survivors if i != player)
+        remaining = max(0, view.turn_limit - view.turns)
+        for i in survivors:
+            others = sum(incomes[j] for j in survivors if j != i)
+            net_rent = ((len(survivors) - 1) * incomes[i] - others) * remaining / len(survivors)
+            worth[i] += net_rent + SET_BONUS * sets[i]
+            worth[i] += CAPITAL_HURDLE * view.players[i].cash
+        return worth[player] - max(worth[i] for i in survivors if i != player)
 
 
 class MCTSDecisions:
