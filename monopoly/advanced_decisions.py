@@ -166,8 +166,10 @@ class ExpectimaxDecisions:
             return cached[0]
         start = budget[0]
         budget[0] += 1
+        
         value = sum(probability * self._after_landing(outcome, player, depth - 1, budget, skipped)
                     for probability, outcome, skipped in self._outcomes(view))
+        
         if budget[0] < self.max_nodes and len(self._transpositions) < 4096:
             self._transpositions[key] = (value, budget[0] - start)
         return value
@@ -542,7 +544,9 @@ class ProspectTheoryDecisions(SimpleDecisions):
         # The existing expected-gain helper already deducts
         # a 10% capital-use hurdle.
         hurdle = self.capital_hurdle * cost
-        gross_expected_benefit = expected_gain + hurdle
+        gross_expected_benefit = (
+            expected_gain + CAPITAL_HURDLE * cost
+        )
 
         # Approximate the gain conditional on earning rent.
         gain_if_rent = gross_expected_benefit / rent_probability - hurdle

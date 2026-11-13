@@ -184,7 +184,6 @@ def adaptive_bot(*, use_mcts: bool = True) -> PolicyBot:
 
 
 def risk_averse_bot(*, use_prospect_theory: bool = True) -> PolicyBot:
-    """Use prospect theory in games; retain EV for trading-only experiments."""
     from .advanced_decisions import ProspectTheoryDecisions
 
     decisions = ProspectTheoryDecisions() if use_prospect_theory else ExpectedValueDecisions()

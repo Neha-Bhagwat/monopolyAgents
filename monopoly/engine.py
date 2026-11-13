@@ -209,7 +209,7 @@ class Game:
                     prop = BOARD[i].property
                     assert prop is not None
                     if self.buildings[i] == lowest < 5 and self.players[player].cash >= prop.build_cost:
-                        legal.append(i)
+                         legal.append(i)
         return tuple(legal)
 
     def negotiate(self, offer: Offer) -> bool:

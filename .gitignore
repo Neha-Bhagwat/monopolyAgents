@@ -15,6 +15,7 @@ htmlcov/
 .DS_Store
 Thumbs.db
 results/
+analysis/
 
 # Keep restored regression tests and the Expectimax implementation notes.
 !tests/
