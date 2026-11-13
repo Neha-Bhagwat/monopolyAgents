@@ -14,7 +14,7 @@ python3 -m unittest discover -s tests -v
 
 The first command now runs Hard-bargainer with Expectimax and Zeuthen trading.
 Risk-averse uses the teammate's prospect-theory decisions and minimax-regret
-trading. Adaptive still uses expected-value decisions; MCTS remains unimplemented.
+trading. Adaptive now uses Monte Carlo Tree Search (see [MCTS.md](MCTS.md)).
 
 ## Algorithm
 

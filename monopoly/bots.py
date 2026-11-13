@@ -175,8 +175,12 @@ def hard_bargainer_bot(*, use_expectimax: bool = True) -> PolicyBot:
     return PolicyBot(decisions, ZeuthenTrading())
 
 
-def adaptive_bot() -> PolicyBot:
-    return PolicyBot(ExpectedValueDecisions(), BayesianTrading())
+def adaptive_bot(*, use_mcts: bool = True) -> PolicyBot:
+    """Use MCTS in ordinary games; retain EV for trading-only experiments."""
+    from .advanced_decisions import MCTSDecisions
+
+    decisions = MCTSDecisions() if use_mcts else ExpectedValueDecisions()
+    return PolicyBot(decisions, BayesianTrading())
 
 
 def risk_averse_bot(*, use_prospect_theory: bool = True) -> PolicyBot:

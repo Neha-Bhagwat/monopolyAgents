@@ -1,7 +1,9 @@
-"""Expectimax and prospect-theory decisions; MCTS remains future work."""
+"""Bounded Expectimax, Monte Carlo tree search, and prospect-theory decisions."""
 
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
+from math import isfinite, log, sqrt, tanh
+from random import Random
 
 from .board import BOARD, CHANCE, CHEST, GROUPS, Kind
 from .engine import Game, Player
@@ -245,14 +247,204 @@ class ExpectimaxDecisions:
         return worth[player] - max(worth[i] for i in survivors if i != player)
 
 
+@dataclass
+class _MCTSEdge:
+    visits: int = 0
+    total: float = 0.0
+    # One action can produce many sampled chance outcomes. Its UCT statistics
+    # aggregate all of them; chance outcomes themselves are never maximized.
+    outcomes: dict[tuple[GameView, str, int], "_MCTSNode"] = field(default_factory=dict)
+
+
+@dataclass
+class _MCTSNode:
+    view: GameView
+    phase: str
+    remaining: int
+    edges: dict[int | None, _MCTSEdge]
+    visits: int = 0
+
+
 class MCTSDecisions:
+    """UCT search over public-state copies, with expected-value rollouts.
+
+    Each iteration selects actions, expands at most one sampled state, rolls
+    out to a bounded horizon, then backs up a bounded relative-wealth reward.
+    Depth counts future individual turns, excluding the current buy/build.
+    Opponents use expected-value decisions; future trades are omitted. Cards
+    are independent uniform draws because GameView hides the shuffled decks.
+    A fresh local RNG per decision makes repeated calls reproducible without
+    consuming the engine's dice or retaining a tree across changed boards.
+    """
+
+    def __init__(self, iterations: int = 128, depth: int = 8,
+                 exploration: float = sqrt(2), seed: int = 0):
+        if type(iterations) is not int or iterations < 1:
+            raise ValueError("MCTS iterations must be a positive integer.")
+        if type(depth) is not int or not 1 <= depth <= 150:
+            raise ValueError("MCTS depth must be between 1 and 150 player turns.")
+        if (isinstance(exploration, bool) or not isinstance(exploration, (int, float))
+                or not isfinite(exploration) or exploration < 0):
+            raise ValueError("MCTS exploration must be finite and nonnegative.")
+        if type(seed) is not int:
+            raise ValueError("MCTS seed must be an integer.")
+        self.iterations = iterations
+        self.depth = depth
+        self.exploration = exploration
+        self.seed = seed
+
     def buy(self, view: GameView, player: int, square: int) -> bool:
-        # Compare buying vs skipping using simulations
-        pass
+        if self._terminal(view, player) or not ExpectimaxDecisions._can_buy(view, player, square):
+            return False
+        # The engine calls buy at the landed square, before building.
+        return self._choose(view, player, "buy", (None, square)) is not None
 
     def build(self, view: GameView, player: int, legal: tuple[int, ...]) -> int | None:
-        # Run simulations to choose a building
-        pass
+        if self._terminal(view, player):
+            return None
+        options = tuple(square for square in ExpectimaxDecisions._build_options(view, player)
+                        if square in legal)
+        if not options:
+            return None
+        return self._choose(view, player, "build", (None,) + options)
+
+    @staticmethod
+    def _terminal(view: GameView, player: int) -> bool:
+        return (view.turns >= view.turn_limit or view.players[player].bankrupt
+                or sum(not p.bankrupt for p in view.players) <= 1)
+
+    def _stopped(self, view: GameView, phase: str, remaining: int, player: int) -> bool:
+        # Always finish the last sampled turn's purchase/build before evaluating.
+        return self._terminal(view, player) or (phase == "move" and remaining == 0)
+
+    @staticmethod
+    def _actions(view: GameView, phase: str, player: int) -> tuple[int | None, ...]:
+        active = view.active_player
+        if phase == "move":
+            return (None,)
+        if phase == "buy":
+            square = view.players[active].position
+            if not ExpectimaxDecisions._can_buy(view, active, square):
+                return (None,)
+            if active == player:
+                return (None, square)
+            return (square,) if purchase_gain(view, active, square) > 0 else (None,)
+        options = ExpectimaxDecisions._build_options(view, active)
+        if active == player:
+            return (None,) + options
+        best = max(options, key=lambda square: building_gain(view, square), default=None)
+        return (best,) if best is not None and building_gain(view, best) > 0 else (None,)
+
+    @staticmethod
+    def _advance(view: GameView) -> GameView:
+        active = (view.active_player + 1) % len(view.players)
+        while view.players[active].bankrupt:
+            active = (active + 1) % len(view.players)
+        return replace(view, active_player=active, turns=view.turns + 1)
+
+    @staticmethod
+    def _sample_move(view: GameView, rng: Random) -> tuple[GameView, bool]:
+        """Sample movement, using the engine for tax, rent, cards and insolvency."""
+        game = _Forecast(view)
+        active = view.active_player
+        state = game.players[active]
+        if state.jailed:
+            state.jailed = False
+            return game.view(), True
+        total = rng.randint(1, 6) + rng.randint(1, 6)
+        position = state.position + total
+        if position >= len(view.board):
+            state.cash += 200
+        state.position = position % len(view.board)
+        kind = view.board[state.position].kind
+        if kind is Kind.CHANCE:
+            game.chance = [rng.choice(CHANCE)]
+        elif kind is Kind.CHEST:
+            game.chest = [rng.choice(CHEST)]
+        game._land(active)
+        return game.view(), state.jailed or state.bankrupt
+
+    def _step(self, view: GameView, phase: str, remaining: int,
+              action: int | None, rng: Random) -> tuple[GameView, str, int]:
+        if phase == "buy":
+            if action is not None:
+                view = _buy(view, view.active_player, action)
+            return view, "build", remaining
+        if phase == "build":
+            if action is not None:
+                view = _build(view, view.active_player, action)
+            return self._advance(view), "move", remaining
+        view, skipped = self._sample_move(view, rng)
+        if skipped or sum(not p.bankrupt for p in view.players) <= 1:
+            return self._advance(view), "move", remaining - 1
+        return view, "buy", remaining - 1
+
+    @staticmethod
+    def _reward(view: GameView, player: int) -> float:
+        # Scale dollars into [-1, 1] so the UCT exploration term is meaningful.
+        # This heuristic reward is not a calibrated probability of winning.
+        return tanh(ExpectimaxDecisions._evaluate(view, player) / 1500)
+
+    def _rollout(self, view: GameView, phase: str, remaining: int,
+                 player: int, rng: Random) -> float:
+        while not self._stopped(view, phase, remaining, player):
+            actions = self._actions(view, phase, player)
+            action = None
+            if phase == "buy" and len(actions) > 1:
+                square = view.players[view.active_player].position
+                if purchase_gain(view, view.active_player, square) > 0:
+                    action = square
+            elif phase == "build" and len(actions) > 1:
+                best = max(actions[1:], key=lambda square: building_gain(view, square))
+                if building_gain(view, best) > 0:
+                    action = best
+            else:
+                action = actions[0]
+            view, phase, remaining = self._step(view, phase, remaining, action, rng)
+        return self._reward(view, player)
+
+    def _choose(self, view: GameView, player: int, phase: str,
+                actions: tuple[int | None, ...]) -> int | None:
+        root = _MCTSNode(view, phase, self.depth, {a: _MCTSEdge() for a in actions})
+        rng = Random(self.seed)
+        for _ in range(self.iterations):
+            node = root
+            nodes, edges = [root], []
+            while not self._stopped(node.view, node.phase, node.remaining, player):
+                # Explore every action before UCT; insertion order resolves ties.
+                unvisited = [a for a, e in node.edges.items() if e.visits == 0]
+                if unvisited:
+                    action = unvisited[0]
+                else:
+                    action = max(node.edges, key=lambda a: (
+                        node.edges[a].total / node.edges[a].visits
+                        + self.exploration * sqrt(log(node.visits) / node.edges[a].visits)))
+                edge = node.edges[action]
+                edges.append(edge)
+                state, next_phase, remaining = self._step(
+                    node.view, node.phase, node.remaining, action, rng)
+                key = (state, next_phase, remaining)
+                child = edge.outcomes.get(key)
+                expanded = child is None
+                if expanded:
+                    options = self._actions(state, next_phase, player)
+                    child = _MCTSNode(state, next_phase, remaining,
+                                      {a: _MCTSEdge() for a in options})
+                    edge.outcomes[key] = child
+                node = child
+                nodes.append(node)
+                if expanded:
+                    break
+            reward = self._rollout(node.view, node.phase, node.remaining, player, rng)
+            for visited in nodes:
+                visited.visits += 1
+            for edge in edges:
+                edge.visits += 1
+                edge.total += reward
+        # Recommend the most visited action, then its mean reward. Exact ties
+        # favor skipping, which is first. Tiny budgets can leave actions untried.
+        return max(root.edges, key=lambda a: (root.edges[a].visits,
+                   root.edges[a].total / root.edges[a].visits if root.edges[a].visits else -float("inf")))
 
 
 class ProspectTheoryDecisions(SimpleDecisions):

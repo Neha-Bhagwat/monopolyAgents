@@ -1,0 +1,454 @@
+{
+  "note": "Development smoke/timing check: one seed, fixed lineup order, no strength claim.",
+  "python": "3.12.14",
+  "source_sha256": "6bacd6eac12ae06b4c9d06b0049424c9fc1abd0fe6bf52bda53938031df77217",
+  "mcts": {
+    "iterations": 128,
+    "depth": 8,
+    "seed": 0
+  },
+  "games": 15,
+  "mean_game_seconds": 0.7086817199999434,
+  "max_game_seconds": 4.074347700000089,
+  "mcts_searches": 72,
+  "mean_search_ms": 39.0025069444467,
+  "median_search_ms": 39.14240000017344,
+  "max_search_ms": 53.733299999976225,
+  "runs": [
+    {
+      "lineup": [
+        "baseline_bot",
+        "cooperator_bot",
+        "reciprocator_bot",
+        "hard_bargainer_bot"
+      ],
+      "seconds": 4.074347700000089,
+      "result": {
+        "seed": 42,
+        "winner": 3,
+        "turns": 137,
+        "end_reason": "last_player",
+        "net_worth": [
+          0,
+          0,
+          0,
+          10575
+        ],
+        "bankrupt": [
+          true,
+          true,
+          true,
+          false
+        ],
+        "trades_proposed": 12,
+        "trades_accepted": 4
+      }
+    },
+    {
+      "lineup": [
+        "baseline_bot",
+        "cooperator_bot",
+        "reciprocator_bot",
+        "adaptive_bot"
+      ],
+      "seconds": 0.47339689999989787,
+      "result": {
+        "seed": 42,
+        "winner": 1,
+        "turns": 150,
+        "end_reason": "turn_limit",
+        "net_worth": [
+          3185,
+          3334,
+          2755,
+          3226
+        ],
+        "bankrupt": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "trades_proposed": 23,
+        "trades_accepted": 1
+      }
+    },
+    {
+      "lineup": [
+        "baseline_bot",
+        "cooperator_bot",
+        "reciprocator_bot",
+        "risk_averse_bot"
+      ],
+      "seconds": 0.16949079999994865,
+      "result": {
+        "seed": 42,
+        "winner": 1,
+        "turns": 150,
+        "end_reason": "turn_limit",
+        "net_worth": [
+          3185,
+          3334,
+          2755,
+          3226
+        ],
+        "bankrupt": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "trades_proposed": 23,
+        "trades_accepted": 1
+      }
+    },
+    {
+      "lineup": [
+        "baseline_bot",
+        "cooperator_bot",
+        "hard_bargainer_bot",
+        "adaptive_bot"
+      ],
+      "seconds": 0.5797420999999758,
+      "result": {
+        "seed": 42,
+        "winner": 1,
+        "turns": 150,
+        "end_reason": "turn_limit",
+        "net_worth": [
+          3183,
+          3317,
+          2782,
+          3218
+        ],
+        "bankrupt": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "trades_proposed": 25,
+        "trades_accepted": 4
+      }
+    },
+    {
+      "lineup": [
+        "baseline_bot",
+        "cooperator_bot",
+        "hard_bargainer_bot",
+        "risk_averse_bot"
+      ],
+      "seconds": 0.2854953999999452,
+      "result": {
+        "seed": 42,
+        "winner": 1,
+        "turns": 150,
+        "end_reason": "turn_limit",
+        "net_worth": [
+          3191,
+          3292,
+          2791,
+          3226
+        ],
+        "bankrupt": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "trades_proposed": 24,
+        "trades_accepted": 2
+      }
+    },
+    {
+      "lineup": [
+        "baseline_bot",
+        "cooperator_bot",
+        "adaptive_bot",
+        "risk_averse_bot"
+      ],
+      "seconds": 0.3978453999998237,
+      "result": {
+        "seed": 42,
+        "winner": 1,
+        "turns": 150,
+        "end_reason": "turn_limit",
+        "net_worth": [
+          3216,
+          3292,
+          2766,
+          3226
+        ],
+        "bankrupt": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "trades_proposed": 24,
+        "trades_accepted": 2
+      }
+    },
+    {
+      "lineup": [
+        "baseline_bot",
+        "reciprocator_bot",
+        "hard_bargainer_bot",
+        "adaptive_bot"
+      ],
+      "seconds": 0.5678405999999541,
+      "result": {
+        "seed": 42,
+        "winner": 1,
+        "turns": 150,
+        "end_reason": "turn_limit",
+        "net_worth": [
+          3183,
+          3317,
+          2782,
+          3218
+        ],
+        "bankrupt": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "trades_proposed": 25,
+        "trades_accepted": 4
+      }
+    },
+    {
+      "lineup": [
+        "baseline_bot",
+        "reciprocator_bot",
+        "hard_bargainer_bot",
+        "risk_averse_bot"
+      ],
+      "seconds": 0.28824379999991834,
+      "result": {
+        "seed": 42,
+        "winner": 1,
+        "turns": 150,
+        "end_reason": "turn_limit",
+        "net_worth": [
+          3191,
+          3292,
+          2791,
+          3226
+        ],
+        "bankrupt": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "trades_proposed": 24,
+        "trades_accepted": 2
+      }
+    },
+    {
+      "lineup": [
+        "baseline_bot",
+        "reciprocator_bot",
+        "adaptive_bot",
+        "risk_averse_bot"
+      ],
+      "seconds": 0.4117917999999463,
+      "result": {
+        "seed": 42,
+        "winner": 1,
+        "turns": 150,
+        "end_reason": "turn_limit",
+        "net_worth": [
+          3216,
+          3292,
+          2766,
+          3226
+        ],
+        "bankrupt": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "trades_proposed": 24,
+        "trades_accepted": 2
+      }
+    },
+    {
+      "lineup": [
+        "baseline_bot",
+        "hard_bargainer_bot",
+        "adaptive_bot",
+        "risk_averse_bot"
+      ],
+      "seconds": 0.48342249999996056,
+      "result": {
+        "seed": 42,
+        "winner": 1,
+        "turns": 150,
+        "end_reason": "turn_limit",
+        "net_worth": [
+          3216,
+          3292,
+          2766,
+          3226
+        ],
+        "bankrupt": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "trades_proposed": 24,
+        "trades_accepted": 2
+      }
+    },
+    {
+      "lineup": [
+        "cooperator_bot",
+        "reciprocator_bot",
+        "hard_bargainer_bot",
+        "adaptive_bot"
+      ],
+      "seconds": 0.8378106999998636,
+      "result": {
+        "seed": 42,
+        "winner": 1,
+        "turns": 150,
+        "end_reason": "turn_limit",
+        "net_worth": [
+          3119,
+          3287,
+          3004,
+          3090
+        ],
+        "bankrupt": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "trades_proposed": 4,
+        "trades_accepted": 4
+      }
+    },
+    {
+      "lineup": [
+        "cooperator_bot",
+        "reciprocator_bot",
+        "hard_bargainer_bot",
+        "risk_averse_bot"
+      ],
+      "seconds": 0.3401533000001109,
+      "result": {
+        "seed": 42,
+        "winner": 1,
+        "turns": 150,
+        "end_reason": "turn_limit",
+        "net_worth": [
+          3127,
+          3262,
+          2988,
+          3123
+        ],
+        "bankrupt": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "trades_proposed": 2,
+        "trades_accepted": 2
+      }
+    },
+    {
+      "lineup": [
+        "cooperator_bot",
+        "reciprocator_bot",
+        "adaptive_bot",
+        "risk_averse_bot"
+      ],
+      "seconds": 0.5650051999998595,
+      "result": {
+        "seed": 42,
+        "winner": 1,
+        "turns": 150,
+        "end_reason": "turn_limit",
+        "net_worth": [
+          3133,
+          3262,
+          2982,
+          3123
+        ],
+        "bankrupt": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "trades_proposed": 3,
+        "trades_accepted": 3
+      }
+    },
+    {
+      "lineup": [
+        "cooperator_bot",
+        "hard_bargainer_bot",
+        "adaptive_bot",
+        "risk_averse_bot"
+      ],
+      "seconds": 0.6404119999999693,
+      "result": {
+        "seed": 42,
+        "winner": 1,
+        "turns": 150,
+        "end_reason": "turn_limit",
+        "net_worth": [
+          3133,
+          3262,
+          2982,
+          3123
+        ],
+        "bankrupt": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "trades_proposed": 3,
+        "trades_accepted": 3
+      }
+    },
+    {
+      "lineup": [
+        "reciprocator_bot",
+        "hard_bargainer_bot",
+        "adaptive_bot",
+        "risk_averse_bot"
+      ],
+      "seconds": 0.5152275999998892,
+      "result": {
+        "seed": 42,
+        "winner": 1,
+        "turns": 150,
+        "end_reason": "turn_limit",
+        "net_worth": [
+          3247,
+          3262,
+          2793,
+          3198
+        ],
+        "bankrupt": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "trades_proposed": 2,
+        "trades_accepted": 2
+      }
+    }
+  ]
+}
