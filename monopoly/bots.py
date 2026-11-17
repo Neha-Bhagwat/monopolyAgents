@@ -1,7 +1,6 @@
 from typing import Protocol
 
 from .advanced_bargaining import BayesianTrading, MinimaxRegretTrading, ZeuthenTrading
-from .advanced_decisions import ExpectimaxDecisions
 from .bargaining import NashTrading, TitForTatTrading
 from .board import GROUPS
 from .models import GameView, Offer, Reply, completed_sets, legal_offer, ownership_after_trade
@@ -168,6 +167,10 @@ def reciprocator_bot() -> PolicyBot:
 
 def hard_bargainer_bot(*, use_expectimax: bool = True) -> PolicyBot:
     """Use search in ordinary games; retain EV for trading-only experiments."""
+    # Advanced policies also reuse SimpleDecisions; defer this import until the
+    # base policies above are defined, including when either module loads first.
+    from .advanced_decisions import ExpectimaxDecisions
+
     decisions = ExpectimaxDecisions() if use_expectimax else ExpectedValueDecisions()
     return PolicyBot(decisions, ZeuthenTrading())
 
@@ -176,8 +179,12 @@ def adaptive_bot() -> PolicyBot:
     return PolicyBot(ExpectedValueDecisions(), BayesianTrading())
 
 
-def risk_averse_bot() -> PolicyBot:
-    return PolicyBot(ExpectedValueDecisions(), MinimaxRegretTrading())
+def risk_averse_bot(*, use_prospect_theory: bool = True) -> PolicyBot:
+    """Use prospect theory in games; retain EV for trading-only experiments."""
+    from .advanced_decisions import ProspectTheoryDecisions
+
+    decisions = ProspectTheoryDecisions() if use_prospect_theory else ExpectedValueDecisions()
+    return PolicyBot(decisions, MinimaxRegretTrading())
 
 
 class AcceptingBot(SimpleBot):

@@ -37,7 +37,7 @@ def make_game(strategy: str, seed: int, seat: int, trace: Callable[[str], None] 
         "reciprocator": reciprocator_bot,
         "hard_bargainer": lambda: hard_bargainer_bot(use_expectimax=False),
         "adaptive": adaptive_bot,
-        "risk_averse": risk_averse_bot,
+        "risk_averse": lambda: risk_averse_bot(use_prospect_theory=False),
     }
     bots = [baseline_bot() for _ in range(4)]
     bots[seat] = factories[strategy]()

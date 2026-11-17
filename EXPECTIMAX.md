@@ -13,8 +13,8 @@ python3 -m unittest discover -s tests -v
 ```
 
 The first command now runs Hard-bargainer with Expectimax and Zeuthen trading.
-Adaptive and Risk-averse still use expected-value decisions; their advanced
-policies remain unimplemented.
+Risk-averse uses the teammate's prospect-theory decisions and minimax-regret
+trading. Adaptive still uses expected-value decisions; MCTS remains unimplemented.
 
 ## Algorithm
 
@@ -64,6 +64,9 @@ being the last survivor receive large negative/positive scores.
 `hard_bargainer_bot()` uses Expectimax by default. For the trading-only ablation,
 `make_game()` explicitly calls `hard_bargainer_bot(use_expectimax=False)` so all
 six controlled variants retain identical expected-value buy/build policies.
+Likewise, the ablation calls `risk_averse_bot(use_prospect_theory=False)` while
+ordinary games use the teammate's prospect-theory implementation. Advanced-policy
+imports in the bot factories are deferred to avoid a cycle with `SimpleDecisions`.
 
 Changes to package code invalidate strict replay of older source fingerprints.
 Use each saved result's `source.zip` to replay its original version. Comparing
