@@ -1,0 +1,38 @@
+{
+  "agents": [
+    "baseline",
+    "cooperator",
+    "reciprocator",
+    "hard_bargainer",
+    "risk_averse",
+    "adaptive"
+  ],
+  "alpha_rank_implemented": false,
+  "best_response_gap": 0.0,
+  "column_distribution": [
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0
+  ],
+  "column_lp_value": -0.0,
+  "column_solver_status": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+  "column_upper_bound": 0.0,
+  "expected_row_payoff": 0.0,
+  "interpretation": "One equilibrium of the constructed pairwise zero-sum game, not Monopoly itself. Uniqueness is not claimed.",
+  "row_distribution": [
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0
+  ],
+  "row_guarantee": 0.0,
+  "row_lp_value": -0.0,
+  "row_solver_status": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+  "solver": "scipy.optimize.linprog / HiGHS",
+  "tolerance": 1e-09
+}

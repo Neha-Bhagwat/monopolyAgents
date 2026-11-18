@@ -1,0 +1,7 @@
+agent,accepted_trades_involved,accepted_trades_initiated,accepted_trades_as_final_proposer,accepted_trades_as_final_recipient
+adaptive,2473,991,1630,843
+baseline,1979,1797,115,1864
+cooperator,2511,1073,602,1909
+hard_bargainer,2706,1207,2246,460
+reciprocator,2486,1098,879,1607
+risk_averse,2307,1065,1759,548

@@ -3,6 +3,7 @@ tests/
 __pycache__/
 *.py[cod]
 .venv/
+.analysis-venv/
 venv/
 .env
 .env.*
@@ -17,6 +18,5 @@ Thumbs.db
 results/
 analysis/
 
-# Keep restored regression tests and the Expectimax implementation notes.
+# Keep regression tests available for review.
 !tests/
-!EXPECTIMAX.md

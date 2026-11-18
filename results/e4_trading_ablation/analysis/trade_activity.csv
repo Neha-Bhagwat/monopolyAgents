@@ -1,0 +1,7 @@
+strategy,gamewide_negotiations,gamewide_accepted_deals,gamewide_acceptance_rate,test_agent_accepted_deals,test_agent_deals_per_game
+no_trade,8771,33,0.003762398814274313,0,0
+cooperator,8417,171,0.020316027088036117,138,0.69
+reciprocator,8531,172,0.020161762982065408,139,0.695
+hard_bargainer,8426,172,0.02041300735817707,139,0.695
+adaptive,8423,172,0.02042027781075626,139,0.695
+risk_averse,8423,172,0.02042027781075626,139,0.695
