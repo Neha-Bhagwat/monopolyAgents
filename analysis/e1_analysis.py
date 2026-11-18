@@ -248,22 +248,30 @@ def _read_trade_results(trade_path: Path, games: list[GameRow]) -> tuple[list[di
             if game is None:
                 # A journal/CSV may describe a partial batch; ignore unknown games.
                 continue
-            offer = entry.get("offer")
+            # Tournament records wrap the original zero-based engine seats.
+            # Earlier flat pilot exports use one-based seats.
+            if "accepted_trade" in entry:
+                record = entry["accepted_trade"]
+                offset = 0
+            else:
+                record = entry
+                offset = 1
+            offer = record.get("offer") if isinstance(record, dict) else None
             if not isinstance(offer, dict):
                 skipped += 1
                 continue
-            proposer = int(offer["proposer"])
-            recipient = int(offer["recipient"])
-            if not 1 <= proposer <= 4 or not 1 <= recipient <= 4 or proposer == recipient:
+            proposer = int(offer["proposer"]) - offset
+            recipient = int(offer["recipient"]) - offset
+            if not 0 <= proposer < 4 or not 0 <= recipient < 4 or proposer == recipient:
                 raise ValueError(f"Invalid trade participant on line {line_no}")
-            counts[(game.seats[proposer - 1], "final_proposer")] += 1
-            counts[(game.seats[recipient - 1], "final_recipient")] += 1
-            counts[(game.seats[proposer - 1], "involved")] += 1
-            counts[(game.seats[recipient - 1], "involved")] += 1
-            if entry.get("initiated_by") is not None:
-                initial_seat = int(entry["initiated_by"])
-                if 1 <= initial_seat <= 4:
-                    counts[(game.seats[initial_seat - 1], "initiated")] += 1
+            counts[(game.seats[proposer], "final_proposer")] += 1
+            counts[(game.seats[recipient], "final_recipient")] += 1
+            counts[(game.seats[proposer], "involved")] += 1
+            counts[(game.seats[recipient], "involved")] += 1
+            if record.get("initiated_by") is not None:
+                initial_seat = int(record["initiated_by"]) - offset
+                if 0 <= initial_seat < 4:
+                    counts[(game.seats[initial_seat], "initiated")] += 1
             count_per_game[game.game_id] += 1
     warnings = []
     if skipped:

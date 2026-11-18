@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "input": "results/e1_frozen",
+  "e2_output": "results/e2_robustness",
+  "e3_output": "results/e3_payoff_equilibrium",
+  "equilibrium_tolerance": 1e-9,
+  "sd_denominator": 10,
+  "alpha_rank": false
+}
