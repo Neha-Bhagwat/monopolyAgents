@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "purpose": "final",
+  "seed_start": 5000,
+  "seed_count": 50,
+  "turn_limit": 150,
+  "strategies": ["no_trade", "cooperator", "reciprocator", "hard_bargainer", "adaptive", "risk_averse"],
+  "test_seats": [1, 2, 3, 4],
+  "buy_build_policy": "ExpectedValueDecisions",
+  "opponents": "three normal Baselines with set-completion trading",
+  "bootstrap_samples": 10000,
+  "bootstrap_seed": 271828
+}
